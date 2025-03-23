@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 
-from backend.database import create_tables, drop_tables
+from database import create_tables, drop_tables
 
 app = FastAPI()
 
