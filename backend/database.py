@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import psycopg2  # type: ignore
+import psycopg2
 import os
 import dotenv
 
@@ -47,3 +47,27 @@ class PgDatabase(Database):
             password=os.getenv("DB_PASSWORD"),
             database=os.getenv("DB_NAME")
         )
+
+
+t_news = "t_news"
+
+
+def create_tables():
+    with PgDatabase() as db:
+        db.cursor.execute(f"""CREATE TABLE {t_news} (
+            id SERIAL PRIMARY KEY,
+            published_date TIMESTAMPTZ,
+            created_date TIMESTAMPTZ DEFAULT NOW(),
+            created_by VARCHAR(140),
+            context TEXT NOT NULL
+            );
+        """)
+        db.connection.commit()
+        print("Tables are created successfully...")
+
+
+def drop_tables():
+    with PgDatabase() as db:
+        db.cursor.execute(f"DROP TABLE IF EXISTS {t_news} CASCADE;")
+        db.connection.commit()
+        print("Tables are dropped...")
