@@ -1,17 +1,46 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from typing import Annotated
+from fastapi import Depends, FastAPI, HTTPException
+from sqlmodel import Field, SQLModel, Session, create_engine
 
 app = FastAPI()
 
 
-class Task(BaseModel):
-    id: int
-    name: str
-    description: str
+class TaskBase(SQLModel):
+    name: str = Field(default="Task", index=True)
+    description: str = Field(default="desc")
 
 
-# lol
-db: dict[int, Task] = {}
+class Task(TaskBase, table=True):
+    id: int = Field(default=None, primary_key=True)
+
+
+class TaskUpdate(TaskBase):
+    name: str | None = None
+    description: str | None = None
+
+
+sqlite_file_name = "database.db"
+sqlite_url = f"sqlite:///{sqlite_file_name}"
+
+connect_args = {"check_same_thread": False}
+engine = create_engine(sqlite_url, connect_args=connect_args)
+
+
+def create_db_and_tables():
+    SQLModel.metadata.create_all(engine)
+
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+
+SessionDep = Annotated[Session, Depends(get_session)]
+
+
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
 
 
 @app.get('/')
@@ -20,38 +49,40 @@ async def home():
 
 
 @app.post('/tasks')
-async def create_task(task: Task) -> Task:
-    if task.id in db:
-        raise HTTPException(status_code=400, detail="task already exists")
-    db[task.id] = task
+async def create_task(task: Task, session: SessionDep) -> Task:
+    session.add(task)
+    session.commit()
+    session.refresh(task)
     return task
 
 
 @app.get('/tasks/{task_id}')
-async def read_task(task_id: int) -> Task:
-    if task_id not in db:
+async def read_task(task_id: int, session: SessionDep) -> Task:
+    task = session.get(Task, task_id)
+    if not task:
         raise HTTPException(status_code=404, detail="task not found")
+    return task
 
-    return db[task_id]
 
-
-@app.put('/tasks/{task_id}')
-async def update_task(task_id: int, task: Task) -> Task:
-    if task.id != task_id:
-        raise HTTPException(status_code=400, detail="bad req")
-
-    if task_id not in db:
+@app.patch('/tasks/{task_id}')
+async def update_task(task_id: int, task: TaskUpdate, session: SessionDep) -> Task:
+    task_db = session.get(Task, task_id)
+    if not task_db:
         raise HTTPException(status_code=404, detail="task not found")
-
-    db[task.id].name = task.name
-    db[task.id].description = task.description
-
-    return db[task.id]
+    task_data = task.model_dump(exclude_unset=True)
+    task_db.sqlmodel_update(task_data)
+    session.add(task_db)
+    session.commit()
+    session.refresh(task_db)
+    return task_db
 
 
 @app.delete('/tasks/{task_id}')
-async def delete_task(task_id: int):
-    ret = db.pop(task_id, None)
-    if not ret:
+async def delete_task(task_id: int, session: SessionDep):
+    task = session.get(Task, task_id)
+    if not task:
         raise HTTPException(status_code=404, detail="task not found")
-    return ret
+
+    session.delete(task)
+    session.commit()
+    return task
