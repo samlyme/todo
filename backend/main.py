@@ -1,6 +1,6 @@
-from typing import Annotated
+from typing import Annotated, Any
 from fastapi import Depends, FastAPI, HTTPException
-from sqlmodel import Field, SQLModel, Session, create_engine
+from sqlmodel import Field, SQLModel, Session, create_engine, select
 
 app = FastAPI()
 
@@ -12,6 +12,14 @@ class TaskBase(SQLModel):
 
 class Task(TaskBase, table=True):
     id: int = Field(default=None, primary_key=True)
+
+
+class TaskPublic(TaskBase):
+    id: int
+
+
+class TaskCreate(TaskBase):
+    pass
 
 
 class TaskUpdate(TaskBase):
@@ -54,6 +62,11 @@ async def create_task(task: Task, session: SessionDep) -> Task:
     session.commit()
     session.refresh(task)
     return task
+
+
+@app.get('/tasks/', response_model=list[TaskPublic])
+async def get_tasks(session: SessionDep) -> Any:
+    return session.exec(select(Task)).all()
 
 
 @app.get('/tasks/{task_id}')
