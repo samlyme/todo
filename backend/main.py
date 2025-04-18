@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, Sequence
 from fastapi import Depends, FastAPI, HTTPException
 from sqlmodel import Field, SQLModel, Session, create_engine, select
 
@@ -64,8 +64,9 @@ async def create_task(task: Task, session: SessionDep) -> Task:
     return task
 
 
+# prefer regular typing when possible
 @app.get('/tasks/', response_model=list[TaskPublic])
-async def get_tasks(session: SessionDep) -> Any:
+async def get_tasks(session: SessionDep) -> Sequence[Task]:
     return session.exec(select(Task)).all()
 
 
