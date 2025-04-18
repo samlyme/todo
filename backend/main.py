@@ -1,58 +1,57 @@
-from datetime import datetime, timedelta
-from enum import Enum
-from re import M
-from typing import Any, Dict
-from typing_extensions import Annotated, Doc
-import uuid
-from uuid import UUID
 from fastapi import FastAPI, HTTPException
-from pydantic import UUID4, BaseModel
-from faker import Faker
+from pydantic import BaseModel
 
 app = FastAPI()
 
 
-class TaskPublic(BaseModel):
-    name: str
-    description: str | None = None
-    due_date: datetime | None = None
-
-
 class Task(BaseModel):
-    # Style choice, just duplicate all the fields for readability.
-    id: UUID
-    user_id: UUID
+    id: int
     name: str
-    description: str | None = None
-    due_date: datetime | None = None
-    created_at: datetime | None = None
+    description: str
 
 
-fake = Faker()
-
-# Generate 5 random Task objects
-tasks = [
-    Task(
-        id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-        name=fake.sentence(nb_words=3),
-        description=fake.text(),
-        due_date=datetime.utcnow() + timedelta(days=fake.random_int(min=1, max=30)),
-        created_at=datetime.utcnow()
-    )
-    for _ in range(5)
-]
+# lol
+db: dict[int, Task] = {}
 
 
-@app.get("/tasks/")
-async def get_tasks() -> list[Task]:
-    return tasks
+@app.get('/')
+async def home():
+    return {'message': 'welcome'}
 
 
-@app.get("/tasks/{id}", responses={404: {}})
-async def get_task(id: UUID4) -> TaskPublic:
-    for task in tasks:
-        if task.id == id:
-            return TaskPublic(**task.model_dump())
+@app.post('/tasks')
+async def create_task(task: Task) -> Task:
+    if task.id in db:
+        raise HTTPException(status_code=400, detail="task already exists")
+    db[task.id] = task
+    return task
 
-    raise HTTPException(status_code=404, detail="Task not found")
+
+@app.get('/tasks/{task_id}')
+async def read_task(task_id: int) -> Task:
+    if task_id not in db:
+        raise HTTPException(status_code=404, detail="task not found")
+
+    return db[task_id]
+
+
+@app.put('/tasks/{task_id}')
+async def update_task(task_id: int, task: Task) -> Task:
+    if task.id != task_id:
+        raise HTTPException(status_code=400, detail="bad req")
+
+    if task_id not in db:
+        raise HTTPException(status_code=404, detail="task not found")
+
+    db[task.id].name = task.name
+    db[task.id].description = task.description
+
+    return db[task.id]
+
+
+@app.delete('/tasks/{task_id}')
+async def delete_task(task_id: int):
+    ret = db.pop(task_id, None)
+    if not ret:
+        raise HTTPException(status_code=404, detail="task not found")
+    return ret
